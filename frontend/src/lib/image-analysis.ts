@@ -98,6 +98,42 @@ export function smooth(img: Gray, r = 1): Gray {
   return { w, h, data: Uint8Array.from(src, (v) => Math.round(v)) };
 }
 
+/** Box blur of radius r along one axis via running sums (O(n) regardless of r); window clipped at the edges. */
+function boxBlurAxis(src: Float32Array, w: number, h: number, r: number, horizontal: boolean): Float32Array {
+  const out = new Float32Array(w * h);
+  const lines = horizontal ? h : w;
+  const len = horizontal ? w : h;
+  const stride = horizontal ? 1 : w;
+  const base = (l: number) => (horizontal ? l * w : l);
+  const prefix = new Float64Array(len + 1);
+  for (let l = 0; l < lines; l++) {
+    const b = base(l);
+    for (let i = 0; i < len; i++) prefix[i + 1] = prefix[i] + src[b + i * stride];
+    for (let i = 0; i < len; i++) {
+      const lo = Math.max(0, i - r);
+      const hi = Math.min(len - 1, i + r);
+      out[b + i * stride] = (prefix[hi + 1] - prefix[lo]) / (hi - lo + 1);
+    }
+  }
+  return out;
+}
+
+/**
+ * Remove slow brightness variation (uneven illumination, vignetting, charging gradients): estimate the
+ * background with a very wide blur (radius ≈ ⅙ of the short side, ≫ any grain or pore) and subtract it,
+ * keeping the overall mean. Without this a global threshold labels the dark side of the image as "pores"
+ * or "boundaries" — a 120-level brightness ramp made porosity wrong by ~17 points.
+ */
+export function flattenBackground(img: Gray, radius = Math.max(8, Math.round(Math.min(img.w, img.h) / 6))): Gray {
+  const { w, h, data } = img;
+  let bg: Float32Array = Float32Array.from(data);
+  for (let pass = 0; pass < 2; pass++) bg = boxBlurAxis(boxBlurAxis(bg, w, h, radius, true), w, h, radius, false);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) sum += data[i];
+  const mean = sum / data.length;
+  return { w, h, data: Uint8Array.from(data, (v, i) => Math.max(0, Math.min(255, Math.round(v - bg[i] + mean)))) };
+}
+
 /** Otsu's threshold: maximises between-class variance of the histogram. */
 export function otsu(img: Gray): number {
   const hist = new Array<number>(256).fill(0);

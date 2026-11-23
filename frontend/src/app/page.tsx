@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { NewsFeed, NewsFeedSkeleton } from "@/components/news-feed";
+import { INSTITUTE, SCHOOL } from "@/lib/site";
 import { TOOLS } from "@/lib/tools";
 
 const TEAM = ["Peeyush Mishra", "Kaushlendra Kumar", "Pawe Dhananjay Manohar", "Sushil Kumar Kumhar"];
@@ -34,7 +35,15 @@ export default function Home() {
   return (
     <div className="space-y-16">
       <section className="lattice -mx-4 rounded-2xl border border-line px-6 py-14 sm:mx-0 sm:px-12">
-        <p className="text-sm font-medium text-accent">School of Materials Science and Engineering · NIT Calicut</p>
+        <p className="text-sm font-medium text-accent">
+          <a href={SCHOOL.url} target="_blank" rel="noreferrer" className="hover:underline">
+            {SCHOOL.name}
+          </a>{" "}
+          ·{" "}
+          <a href={INSTITUTE.url} target="_blank" rel="noreferrer" className="hover:underline">
+            {INSTITUTE.name}
+          </a>
+        </p>
         <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight sm:text-5xl">
           AI tools for everyday materials research.
         </h1>

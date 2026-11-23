@@ -30,7 +30,7 @@ from sklearn.metrics import roc_auc_score  # noqa: E402
 from sklearn.model_selection import train_test_split  # noqa: E402
 
 from app.imaging import strip_info_bar  # noqa: E402
-from ml.micrograph.train import MODELS, SIZE, WithCAM, dihedral, load_items, transforms  # noqa: E402
+from ml.micrograph.train import MODELS, WithCAM, dihedral, load_items, transforms  # noqa: E402
 
 OOD = BACKEND / "data" / "ood"
 WEB = BACKEND.parent / "frontend" / "public" / "models"

@@ -37,9 +37,3 @@ export function apiPost<T>(path: string, body: unknown) {
     body: JSON.stringify(body),
   }).then(handle<T>);
 }
-
-export function apiUpload<T>(path: string, file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  return fetch(`/api${path}`, { method: "POST", body: form }).then(handle<T>);
-}

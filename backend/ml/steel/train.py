@@ -27,7 +27,10 @@ BACKEND = Path(__file__).resolve().parents[2]
 DATA = BACKEND / "data" / "raw" / "low_alloy_steels.csv"
 OUT = BACKEND / "models" / "steel.joblib"
 
-FEATURES = ["C", "Si", "Mn", "P", "S", "Ni", "Cr", "Mo", "Cu", "V", "Al", "N", "Ceq", "Nb + Ta", "Temperature (°C)"]
+# "Ceq" and "Nb + Ta" are left out: Ceq is 0 for 77 % of rows (74 of 95 alloys — a missing-data code, not a
+# carbon equivalent) and Nb + Ta is 0 almost everywhere. Removing both changes grouped-CV R² by < 0.01, and
+# the website no longer asks users for numbers they cannot know.
+FEATURES = ["C", "Si", "Mn", "P", "S", "Ni", "Cr", "Mo", "Cu", "V", "Al", "N", "Temperature (°C)"]
 TARGETS = {
     "proof_stress": "0.2% Proof Stress (MPa)",
     "tensile_strength": "Tensile Strength (MPa)",
@@ -40,8 +43,10 @@ def load() -> pd.DataFrame:
     df = pd.read_csv(DATA)
     df.columns = [c.strip() for c in df.columns]
     n = len(df)
-    # Physically impossible rows: UTS must exceed 0.2% proof stress and stay in a sane range.
-    df = df[(df["Tensile Strength (MPa)"] < 2000) & (df["Tensile Strength (MPa)"] >= df["0.2% Proof Stress (MPa)"])]
+    # Data-entry errors (e.g. UTS 6661 MPa, proof stress 27 MPa at UTS 375 MPa): for steels the proof/tensile
+    # ratio lies between about 0.3 and 1.0; keep a margin below that and drop anything outside.
+    ratio = df["0.2% Proof Stress (MPa)"] / df["Tensile Strength (MPa)"]
+    df = df[(df["Tensile Strength (MPa)"] < 2000) & (ratio >= 0.2) & (ratio <= 1.0)]
     print(f"Loaded {n} rows, kept {len(df)} after cleaning; {df['Alloy code'].nunique()} distinct alloys")
     return df.reset_index(drop=True)
 

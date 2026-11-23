@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { Download, ImageUp, Ruler } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Badge, Button, Card, CardTitle, Input, Label, Notice, Segmented } from "@/components/ui";
@@ -13,6 +13,7 @@ import {
   astmFromIntercept,
   cropRows,
   dataBarTop,
+  flattenBackground,
   otsu,
   smooth,
   toGray,
@@ -68,6 +69,7 @@ export function ImageAnalyzer() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("grains");
   const [cropBar, setCropBar] = useState(true);
+  const [flatten, setFlatten] = useState(true);
   const [dark, setDark] = useState(true);
   const [autoThr, setAutoThr] = useState(true);
   const [thr, setThr] = useState(128);
@@ -110,18 +112,26 @@ export function ImageAnalyzer() {
   // Analysis image: optionally without the SEM data panel.
   const img = useMemo(() => {
     if (!src) return null;
-    return cropBar && src.barTop ? cropRows(src.gray, Math.max(1, src.barTop - 2)) : src.gray;
-  }, [src, cropBar]);
+    const cropped = cropBar && src.barTop ? cropRows(src.gray, Math.max(1, src.barTop - 2)) : src.gray;
+    // Slow brightness gradients would otherwise push one side of the image across the global threshold.
+    return flatten ? flattenBackground(cropped) : cropped;
+  }, [src, cropBar, flatten]);
 
-  const otsuValue = useMemo(() => (img ? otsu(smooth(img, smoothing)) : 128), [img, smoothing]);
+  // Smooth once per (image, smoothing); the Otsu readout and the analysis both reuse it. Before, every
+  // slider tick re-smoothed the image twice (~100 ms each at 768 px).
+  const smoothed = useMemo(() => (img ? smooth(img, smoothing) : null), [img, smoothing]);
+  const otsuValue = useMemo(() => (smoothed ? otsu(smoothed) : 128), [smoothed]);
   const usedThr = autoThr ? otsuValue : thr;
 
+  // The analysis takes ~200 ms at 768 px: let React keep the sliders responsive and run it on deferred values.
+  const params = useDeferredValue({ usedThr, dark, minArea, closeR });
   const result = useMemo(() => {
-    if (!img) return null;
+    if (!smoothed) return null;
+    const { usedThr: thr, dark, minArea, closeR } = params;
     return mode === "porosity"
-      ? { kind: "porosity" as const, r: analysePorosity(img, { thr: usedThr, poresDark: dark, minArea: Math.max(1, Math.round(minArea / 5)), smoothing }) }
-      : { kind: "grains" as const, r: analyseGrains(img, { thr: usedThr, boundariesDark: dark, closeRadius: closeR, minArea, smoothing }) };
-  }, [img, mode, usedThr, dark, minArea, smoothing, closeR]);
+      ? { kind: "porosity" as const, r: analysePorosity(smoothed, { thr, poresDark: dark, minArea: Math.max(1, Math.round(minArea / 5)), smoothing: 0 }) }
+      : { kind: "grains" as const, r: analyseGrains(smoothed, { thr, boundariesDark: dark, closeRadius: closeR, minArea, smoothing: 0 }) };
+  }, [smoothed, mode, params]);
 
   // µm per *analysis* pixel (analysis image may be downscaled from the original).
   const scale = useMemo(() => {
@@ -317,6 +327,14 @@ export function ImageAnalyzer() {
                   <dd className="text-right text-xl font-semibold tabular-nums">{scale ? fmt(astmFromIntercept(len(result.r.meanIntercept) / 1000), 1) : "set scale"}</dd>
                 </dl>
               )}
+              {result.kind === "grains" && result.r.grainCount < 50 && (
+                <div className="mt-3">
+                  <Notice tone="warn">
+                    Only {result.r.grainCount} grains counted. ASTM E112 asks for at least 50 grains per field for a reliable
+                    grain size — use a lower magnification or check the threshold and boundary settings.
+                  </Notice>
+                </div>
+              )}
               {sizes.length > 1 && (
                 <div className="mt-4 h-40">
                   <ResponsiveContainer width="100%" height="100%">
@@ -367,6 +385,10 @@ export function ImageAnalyzer() {
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} className="size-4 accent-accent" />
                   {mode === "grains" ? "Grain boundaries are dark" : "Pores are dark"}
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={flatten} onChange={(e) => setFlatten(e.target.checked)} className="size-4 accent-accent" />
+                  Correct uneven illumination
                 </label>
                 {src.barTop !== null && (
                   <label className="flex items-center gap-2">

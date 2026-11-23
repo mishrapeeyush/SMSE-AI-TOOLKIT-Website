@@ -65,6 +65,21 @@ function familyLabel(hkls: number[][]): number[] {
   })[0];
 }
 
+/**
+ * Rough work estimate for computeXrd: reflections inside the Ewald limit sphere (half space) × atom
+ * entries. Measured: ~1.5e7 per second, so MAX_XRD_COST (≈ 20 s) keeps even a worker-based calculation
+ * from running for minutes on supercells of hundreds of atoms with short wavelengths (Ag Kα).
+ */
+export function xrdCost(structure: XrdStructure, wavelength: number, range: [number, number] = [0, 90]): number {
+  const [a, b, c] = structure.lattice.matrix;
+  const volume = Math.abs(a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]));
+  const r = (deg: number) => (2 * Math.sin((deg / 2) * (Math.PI / 180))) / wavelength;
+  const reflections = ((4 / 3) * Math.PI * (r(range[1]) ** 3 - r(range[0]) ** 3) * volume) / 2;
+  const atoms = structure.sites.reduce((n, s) => n + s.species.length, 0);
+  return reflections * atoms;
+}
+export const MAX_XRD_COST = 3e8;
+
 export function computeXrd(structure: XrdStructure, wavelength: number, range: [number, number] = [0, 90]): XrdPeak[] {
   const A = structure.lattice.matrix;
   // Crystallographic reciprocal lattice (no 2π): rows of (A⁻¹)ᵀ.

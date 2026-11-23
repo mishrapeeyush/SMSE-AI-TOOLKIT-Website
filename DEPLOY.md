@@ -19,7 +19,7 @@ models and local development; it is not deployed.
 ## Steps
 
 1. Get a new Materials Project API key: https://next-gen.materialsproject.org/api
-   (and **revoke the old 2023 key** — it is inside `smse-toolkit-website.zip` at the repo root).
+   (and **revoke the old 2023 key** — it was committed in the 2023 code that used to sit in this repository, so it is still in the git history).
 2. Sign up at https://vercel.com with **“Continue with GitHub”**.
 3. https://vercel.com/new → **Import** `smse-toolkit-website`.
 4. **Root Directory:** `frontend` (click *Edit*). Framework preset: Next.js (auto-detected).
@@ -28,8 +28,7 @@ models and local development; it is not deployed.
    - `CROSSREF_MAILTO` = your email (optional; Crossref etiquette, faster responses)
 6. **Deploy** → `https://<project>.vercel.app`. Every `git push` to `main` redeploys.
 
-The repository's other contents (the image dataset, `smse-toolkit-website.zip`,
-`Dragon Real Estates.ipynb`, `backend/`) are not part of the deployment: Vercel builds only `frontend/`.
+The repository's other contents (the image dataset, `backend/`) are not part of the deployment: Vercel builds only `frontend/`.
 
 ## Updating the models
 

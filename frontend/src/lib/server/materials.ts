@@ -14,6 +14,9 @@ export class HttpError extends Error {
   }
 }
 
+/** Upstream Materials Project requests must fail fast instead of hanging a serverless function. */
+export const UPSTREAM_TIMEOUT_MS = 15_000;
+
 export const RANGE_FIELDS: Record<string, string> = {
   band_gap: "Band gap (eV)",
   density: "Density (g/cm³)",
@@ -161,7 +164,7 @@ export function flatten(doc: Doc): Doc {
   return out;
 }
 
-function apiKey(): string {
+export function apiKey(): string {
   const key = process.env.MP_API_KEY;
   if (!key)
     throw new HttpError(
@@ -177,6 +180,7 @@ async function mpSummary(params: URLSearchParams): Promise<{ data: Doc[]; total:
     res = await fetch(`https://api.materialsproject.org/materials/summary/?${params}`, {
       headers: { "x-api-key": apiKey() },
       cache: "no-store",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (e) {
     throw new HttpError(502, `Could not reach Materials Project: ${(e as Error).message}`);
@@ -237,6 +241,7 @@ export async function searchElectrodes(q: URLSearchParams) {
     res = await fetch(`https://api.materialsproject.org/materials/insertion_electrodes/?${params}`, {
       headers: { "x-api-key": apiKey() },
       cache: "no-store",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (e) {
     throw new HttpError(502, `Could not reach Materials Project: ${(e as Error).message}`);
@@ -265,7 +270,7 @@ export async function getOxidation(id: string) {
   try {
     res = await fetch(
       `https://api.materialsproject.org/materials/oxidation_states/?material_ids=${encodeURIComponent(id)}&_fields=possible_species,possible_valences,average_oxidation_states,method,structure`,
-      { headers: { "x-api-key": apiKey() }, cache: "no-store" },
+      { headers: { "x-api-key": apiKey() }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
     );
   } catch (e) {
     throw new HttpError(502, `Could not reach Materials Project: ${(e as Error).message}`);
