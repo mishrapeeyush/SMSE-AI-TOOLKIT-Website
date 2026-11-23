@@ -1,7 +1,12 @@
 import "server-only";
 
 import { parseDoi } from "../doi";
+import { fetchWithRetry } from "../fetch-retry";
 import { HttpError } from "./materials";
+
+/** Upstreams (overridable so tests can point the routes at a local fake). */
+const DOI_ORG = process.env.DOI_API_URL ?? "https://doi.org";
+const CROSSREF = process.env.CROSSREF_API_URL ?? "https://api.crossref.org";
 
 /** DOI → CSL-JSON (+ BibTeX) and Crossref free-text search. Port of backend/app/routers/citations.py. */
 
@@ -35,17 +40,19 @@ export function cleanCsl(value: unknown): unknown {
 async function negotiate(doi: string, accept: string): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(`https://doi.org/${doi}`, { headers: { Accept: accept }, redirect: "follow", cache: "no-store", signal: AbortSignal.timeout(10_000) });
+    // doi.org rate-limits (429) when several lookups arrive together: one short retry hides that.
+    res = await fetchWithRetry(`${DOI_ORG}/${doi}`, { headers: { Accept: accept }, redirect: "follow", cache: "no-store", signal: AbortSignal.timeout(12_000) });
   } catch (e) {
     throw new HttpError(502, `Could not reach doi.org: ${(e as Error).message}`);
   }
   if (res.status === 404) throw new HttpError(404, `DOI ${doi} was not found.`);
+  if (res.status === 429) throw new HttpError(502, "doi.org is busy right now (too many requests). Please try again in a few seconds.");
   if (!res.ok) throw new HttpError(502, `doi.org returned ${res.status}`);
   return (await res.text()).trim();
 }
 
-export async function resolveDoi(raw: string) {
-  const doi = normalizeDoi(raw);
+/** Look a DOI up for real (two doi.org requests). */
+async function resolveFresh(doi: string) {
   // The CSL-JSON and BibTeX requests are independent: run them together (BibTeX is optional).
   const [cslText, bibtex] = await Promise.all([
     negotiate(doi, "application/vnd.citationstyles.csl+json"),
@@ -61,6 +68,39 @@ export async function resolveDoi(raw: string) {
   for (const k of ["reference", "relation", "license", "link", "funder", "assertion", "content-domain"]) delete csl[k];
   csl.id = doi;
   return { doi, csl, bibtex };
+}
+
+// A DOI's metadata hardly ever changes. Successful lookups are remembered for a day (per server instance;
+// the GET route is additionally cached by the CDN for all visitors), so a repeat costs nothing and sends
+// nothing to doi.org, which rate-limits. Errors are never remembered.
+const remembered = new Map<string, { at: number; value: Awaited<ReturnType<typeof resolveFresh>> }>();
+const notFound = new Map<string, number>(); // DOI → when doi.org said 404 (kept briefly: typos get retried a lot)
+const KEEP_MS = 24 * 3600 * 1000;
+const NOT_FOUND_MS = 10 * 60 * 1000;
+const KEEP_MAX = 500;
+
+function limit<K, V>(m: Map<K, V>) {
+  if (m.size >= KEEP_MAX) m.delete(m.keys().next().value as K); // oldest first
+}
+
+export async function resolveDoi(raw: string) {
+  const doi = normalizeDoi(raw);
+  const hit = remembered.get(doi);
+  if (hit && Date.now() - hit.at < KEEP_MS) return hit.value;
+  const missed = notFound.get(doi);
+  if (missed && Date.now() - missed < NOT_FOUND_MS) throw new HttpError(404, `DOI ${doi} was not found.`);
+  try {
+    const value = await resolveFresh(doi);
+    limit(remembered);
+    remembered.set(doi, { at: Date.now(), value });
+    return value;
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 404) {
+      limit(notFound);
+      notFound.set(doi, Date.now());
+    }
+    throw e;
+  }
 }
 
 type CrossrefItem = {
@@ -81,7 +121,7 @@ export async function searchCrossref(q: string, rows = 5) {
   if (process.env.CROSSREF_MAILTO) params.set("mailto", process.env.CROSSREF_MAILTO);
   let res: Response;
   try {
-    res = await fetch(`https://api.crossref.org/works?${params}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+    res = await fetchWithRetry(`${CROSSREF}/works?${params}`, { cache: "no-store", signal: AbortSignal.timeout(12_000) });
   } catch (e) {
     throw new HttpError(502, `Crossref search failed: ${(e as Error).message}`);
   }

@@ -4,7 +4,7 @@ import { Check, Copy, Plus, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent } from "react";
 
 import { Button, Card, CardTitle, Input, Label, Notice, Segmented } from "@/components/ui";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 import { formatBibliography, STYLE_LABELS, toBibtex, type CSL, type StyleLabel } from "@/lib/cite";
 
 type Mode = "doi" | "search" | "manual";
@@ -216,7 +216,7 @@ export function CitationGenerator() {
     setLoading(true);
     setError(null);
     try {
-      const r = await apiPost<{ csl: CSL }>("/citations", { doi: value });
+      const r = await apiGet<{ csl: CSL }>("/citations", { doi: value });
       setRendered({});
       setCurrent(r.csl);
     } catch (e) {

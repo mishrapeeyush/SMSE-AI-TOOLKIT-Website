@@ -5,6 +5,7 @@ import "server-only";
  * Port of backend/app/routers/materials.py; each preset is one of the 2023 lookup tools.
  */
 
+import { fetchWithRetry } from "../fetch-retry";
 import { toXrdStructure } from "../xrd";
 
 export class HttpError extends Error {
@@ -182,7 +183,7 @@ export function apiKey(): string {
 async function mpSummary(params: URLSearchParams): Promise<{ data: Doc[]; total: number }> {
   let res: Response;
   try {
-    res = await fetch(`${MP_API}/materials/summary/?${params}`, {
+    res = await fetchWithRetry(`${MP_API}/materials/summary/?${params}`, {
       headers: { "x-api-key": apiKey() },
       cache: "no-store",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -243,7 +244,7 @@ export async function searchElectrodes(q: URLSearchParams) {
 
   let res: Response;
   try {
-    res = await fetch(`${MP_API}/materials/insertion_electrodes/?${params}`, {
+    res = await fetchWithRetry(`${MP_API}/materials/insertion_electrodes/?${params}`, {
       headers: { "x-api-key": apiKey() },
       cache: "no-store",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -273,7 +274,7 @@ export async function getOxidation(id: string) {
   if (!MATERIAL_ID.test(id)) throw new HttpError(422, "Material ids look like 'mp-149'.");
   let res: Response;
   try {
-    res = await fetch(
+    res = await fetchWithRetry(
       `${MP_API}/materials/oxidation_states/?material_ids=${encodeURIComponent(id)}&_fields=possible_species,possible_valences,average_oxidation_states,method,structure`,
       { headers: { "x-api-key": apiKey() }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
     );
