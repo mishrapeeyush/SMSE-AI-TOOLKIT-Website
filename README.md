@@ -13,7 +13,7 @@ the first commit of this repository.
 | **Steel Property Prediction** | 0.2% proof stress, tensile strength, elongation, reduction in area from composition + temperature, with uncertainty | Extra-Trees ensembles (scikit-learn) on NIMS MatNavi data, validated on unseen alloys; evaluated **in the browser** |
 | **Materials Explorer** | Search Materials Project by band gap, elasticity, magnetism, dielectric, piezoelectric and surface properties | Materials Project REST API via a serverless route |
 | **Material pages** | Full properties, interactive 3D crystal structure, simulated powder XRD (6 X-ray sources), band structure + density of states, isostructural analogues | three.js; XRD computed in the browser (port of pymatgen's XRDCalculator, verified against it); band structures from the Materials Project open data |
-| **Phase Diagram** | Binary convex hulls and ternary phase diagrams with tie-lines | Materials Project formation energies; lower convex hull computed in the browser |
+| **Phase Diagram** | Binary convex hulls and ternary phase diagrams with tie-lines | Materials Project formation energies; stable phases from the Materials Project energy-above-hull; ternary tie-lines computed in the browser |
 | **Periodic Table** | Element data, links into the explorer | Static data |
 | **Citation Generator** | DOI / title / manual entry → IEEE, APA, MLA, Chicago/Turabian, Harvard, Vancouver, BibTeX | Crossref + doi.org metadata, formatted with citation-js (citeproc-js) |
 
@@ -43,15 +43,15 @@ microstructures, so the check is a warning, not a guarantee.
 mean error 0.11 percentage points; grain size mean error 1.0 % (planimetric) and 1.5 %
 (lineal intercept).
 
-**Steel properties** — 913 tensile tests of 95 low-alloy steels; 5-fold cross-validation
+**Steel properties** — 912 tensile tests of 95 low-alloy steels (three data-entry errors removed; the two mostly-empty `Ceq` / `Nb + Ta` columns are not used); 5-fold cross-validation
 grouped by alloy (every score is on steels never seen in training):
 
 | Property | 2023 method (linear regression) R² | v2 (Extra Trees) R² | Mean abs. error |
 |---|---|---|---|
-| 0.2 % proof stress | 0.83 | **0.93** | 22 MPa |
-| Tensile strength | 0.69 | **0.95** | 19 MPa |
-| Elongation | 0.49 | **0.86** | 2.3 % |
-| Reduction in area | 0.46 | **0.81** | 3.4 % |
+| 0.2 % proof stress | 0.81 | **0.93** | 22 MPa |
+| Tensile strength | 0.67 | **0.95** | 19 MPa |
+| Elongation | 0.49 | **0.86** | 2.2 % |
+| Reduction in area | 0.46 | **0.81** | 3.3 % |
 
 ## Stack
 
