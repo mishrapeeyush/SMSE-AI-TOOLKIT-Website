@@ -2,18 +2,20 @@
 
 AI tools for materials science, rebuilt from the 2023 B.Tech thesis
 *“SMSE AI Toolkit: Material Class and Properties Prediction”* ([School of Materials
-Science and Engineering](https://nitc.ac.in/department/materials-science-and-engineering), [NIT Calicut](https://nitc.ac.in/) — Peeyush Mishra, Kaushlendra Kumar, Pawe
-Dhananjay Manohar, Sushil Kumar Kumhar; guide Dr. Devendra K. Yadav). The thesis
+Science and Engineering](https://nitc.ac.in/department/materials-science-and-engineering), [NIT Calicut](https://nitc.ac.in/) — [Peeyush Mishra](https://www.linkedin.com/in/peeyush-m/), [Kaushlendra Kumar](https://www.linkedin.com/in/kaushlendra-kumar-/), [Pawe
+Dhananjay Manohar](https://www.linkedin.com/in/dhananjay-pawe/), [Sushil Kumar Kumhar](https://www.linkedin.com/in/prajapat-sushil/); guide [Dr. Devendra K. Yadav](https://www.linkedin.com/in/devendra-k-yadav-90b15342/)). The thesis
 is in [docs/](docs/SMSE_AI_Toolkit_Thesis_2023.pdf); the original Django code is
 the first commit of this repository.
 
 | Tool | What it does | How |
 |---|---|---|
 | **Micrograph Recognition** | Classifies SEM images into 10 nanoscience categories | EfficientNet-B0 fine-tuned on the NFFA-EUROPE SEM dataset (PyTorch); runs **in the browser** with ONNX Runtime Web |
+| **Image Analysis** | Grain size (ASTM E112, planimetric and lineal intercept) and porosity from optical or SEM micrographs, with scale-bar calibration | Thresholding + connected components in the browser; validated on synthetic microstructures with known ground truth; illumination correction |
 | **Steel Property Prediction** | 0.2% proof stress, tensile strength, elongation, reduction in area from composition + temperature, with uncertainty | Extra-Trees ensembles (scikit-learn) on NIMS MatNavi data, validated on unseen alloys; evaluated **in the browser** |
 | **Materials Explorer** | Search Materials Project by band gap, elasticity, magnetism, dielectric, piezoelectric and surface properties | Materials Project REST API via a serverless route |
 | **Material pages** | Full properties, interactive 3D crystal structure, simulated powder XRD (6 X-ray sources), band structure + density of states, isostructural analogues | three.js; XRD computed in the browser (port of pymatgen's XRDCalculator, verified against it); band structures from the Materials Project open data |
 | **Phase Diagram** | Binary convex hulls and ternary phase diagrams with tie-lines | Materials Project formation energies; stable phases from the Materials Project energy-above-hull; ternary tie-lines computed in the browser |
+| **Battery Electrodes** | Search intercalation electrodes (Li, Na, Mg, Zn…) by voltage, capacity, energy density and stability, with voltage profiles | Materials Project insertion-electrode data via a serverless route |
 | **Periodic Table** | Element data, links into the explorer | Static data |
 | **XRD Phase Matching** | Upload a measured powder pattern, name the possible elements, and get the matching phases plus crystallite sizes (Scherrer) | Peak finding + greedy phase identification (lattice-scale and zero-shift tolerant) against patterns simulated in the browser from Materials Project structures |
 | **Citation Generator** | DOI / title / manual entry → IEEE, APA, MLA, Chicago/Turabian, Harvard, Vancouver, BibTeX | Crossref + doi.org metadata, formatted with citation-js (citeproc-js) |
@@ -125,6 +127,7 @@ deploy, weekly, and on demand.
 
 ### Caching and rate limiting
 
+- Lookups are retried once on a momentary upstream failure (HTTP 429 / 502 / 503 / 504 or a dropped connection), and resolved DOIs are remembered on the server for a day.
 - API responses carry CDN `Cache-Control` headers: searches 1 h, single materials / phase
   diagrams / citations 1 day, band structures and Fermi surfaces 1 week (each with
   stale-while-revalidate). Errors are never cached. Server-side `use cache` additionally keeps

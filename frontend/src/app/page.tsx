@@ -3,10 +3,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { NewsFeed, NewsFeedSkeleton } from "@/components/news-feed";
-import { INSTITUTE, SCHOOL } from "@/lib/site";
+import { AUTHORS, GUIDE, INSTITUTE, SCHOOL } from "@/lib/site";
 import { TOOLS } from "@/lib/tools";
-
-const TEAM = ["Peeyush Mishra", "Kaushlendra Kumar", "Pawe Dhananjay Manohar", "Sushil Kumar Kumhar"];
 
 const UPGRADES = [
   {
@@ -29,6 +27,36 @@ const UPGRADES = [
     then: "Hand-written style rules (citeproc-py / pybtex)",
     now: "DOI & free-text lookup, formatted by the citeproc-js engine with official CSL styles",
   },
+  {
+    area: "Image analysis",
+    then: "Not available",
+    now: "New: ASTM E112 grain size and porosity from optical or SEM micrographs, with scale-bar calibration and illumination correction",
+  },
+  {
+    area: "XRD phase matching",
+    then: "Not available",
+    now: "New: identify phases in a measured powder pattern against Materials Project structures, with Scherrer crystallite sizes",
+  },
+  {
+    area: "Phase diagrams",
+    then: "Not available",
+    now: "New: binary and ternary formation-energy convex hulls from Materials Project data",
+  },
+  {
+    area: "Battery electrodes",
+    then: "Not available",
+    now: "New: search intercalation electrodes by voltage, capacity and stability, with voltage profiles",
+  },
+  {
+    area: "Material pages",
+    then: "Not available",
+    now: "New: 3D crystal structure, simulated XRD, band structure and density of states, Fermi surfaces and a PDF report",
+  },
+  {
+    area: "Periodic table",
+    then: "Not available",
+    now: "New: element data with links into the Materials Explorer",
+  },
 ];
 
 export default function Home() {
@@ -48,8 +76,8 @@ export default function Home() {
           AI tools for everyday materials research.
         </h1>
         <p className="mt-4 max-w-2xl text-lg text-muted">
-          Classify SEM micrographs, predict the mechanical properties of steels, search the Materials Project database and
-          format references — in one place, free and open source.
+          Classify SEM micrographs, measure grains and porosity, identify phases from an XRD pattern, predict the properties
+          of steels, search the Materials Project database and format references — in one place, free and open source.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
@@ -108,13 +136,26 @@ export default function Home() {
           </h2>
           <p className="mt-3 text-sm text-muted">
             The toolkit began as the B.Tech project <em>“SMSE AI Toolkit: Material Class and Properties Prediction”</em>{" "}
-            (May 2023), guided by Dr. Devendra K. Yadav. Version 2 rebuilds every tool on a modern stack — Next.js,
-            FastAPI, PyTorch and scikit-learn — with stricter validation.
+            (May 2023), guided by{" "}
+            <a href={GUIDE.url} target="_blank" rel="noreferrer" className="underline hover:text-fg">
+              {GUIDE.name}
+            </a>
+            . Version 2 rebuilds every tool on a modern stack — Next.js, PyTorch and scikit-learn — with stricter validation, and
+            adds six new tools.
+          </p>
+          <p className="mt-3 text-sm">
+            <Link href="/about" className="font-medium text-accent hover:underline">
+              About the project, its data sources and its limits →
+            </Link>
           </p>
           <p className="mt-4 text-sm font-medium">Original authors</p>
           <ul className="mt-1 text-sm text-muted">
-            {TEAM.map((n) => (
-              <li key={n}>{n}</li>
+            {AUTHORS.map((a) => (
+              <li key={a.name}>
+                <a href={a.url} target="_blank" rel="noreferrer" className="underline hover:text-fg">
+                  {a.name}
+                </a>
+              </li>
             ))}
           </ul>
         </div>

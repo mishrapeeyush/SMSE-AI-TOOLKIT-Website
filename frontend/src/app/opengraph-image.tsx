@@ -1,10 +1,13 @@
 import { ImageResponse } from "next/og";
 
+import { TOOLS as ALL_TOOLS } from "@/lib/tools";
+
 export const alt = "SMSE AI Toolkit — AI tools for materials science";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const TOOLS = ["Micrograph recognition", "Steel properties", "Materials Explorer", "Phase diagrams", "Citations"];
+// One chip per tool, straight from the central list so it can never go stale.
+const TOOLS = ALL_TOOLS.map((t) => t.short);
 
 export default function OpengraphImage() {
   return new ImageResponse(
