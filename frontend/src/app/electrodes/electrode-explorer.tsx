@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useState, type FormEvent } from "react";
+import { useEffect, useRef, Fragment, useState, type FormEvent } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Button, Card, Input, Label, Notice } from "@/components/ui";
@@ -127,6 +127,15 @@ export function ElectrodeExplorer() {
     e.preventDefault();
     run(0);
   };
+
+  // Show the default search straight away instead of an empty page (results are CDN-cached, so this is cheap).
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void run(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, with the initial filter values
+  }, []);
   const pages = data ? Math.ceil(data.total / PAGE) : 0;
 
   return (

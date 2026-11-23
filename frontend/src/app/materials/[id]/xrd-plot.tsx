@@ -4,7 +4,7 @@ import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button, Card, CardTitle } from "@/components/ui";
-import { MAX_XRD_COST, WAVELENGTHS, xrdCost, type Radiation, type XrdPeak, type XrdStructure } from "@/lib/xrd";
+import { MAX_XRD_COST, mergeNearbyPeaks, WAVELENGTHS, xrdCost, type Radiation, type XrdPeak, type XrdStructure } from "@/lib/xrd";
 import type { XrdRequest, XrdResponse } from "@/lib/xrd.worker";
 
 const W = 820;
@@ -69,16 +69,7 @@ export function XrdPlot({ structure, formula }: { structure: XrdStructure; formu
 
   const peaks = useMemo(() => {
     if (!current || current.error) return [];
-    // Merge reflections within 0.05° for display (DFT cells are often very slightly distorted).
-    const merged: XrdPeak[] = [];
-    for (const p of current.raw) {
-      const last = merged[merged.length - 1];
-      if (last && p.twoTheta - last.twoTheta < 0.05) {
-        if (p.intensity > last.intensity) last.hkl = p.hkl;
-        last.intensity += p.intensity;
-        last.multiplicity += p.multiplicity;
-      } else merged.push({ ...p });
-    }
+    const merged = mergeNearbyPeaks(current.raw);
     const top = Math.max(...merged.map((p) => p.intensity), 1);
     return merged.map((p) => ({ ...p, intensity: (p.intensity / top) * 100 }));
   }, [current]);

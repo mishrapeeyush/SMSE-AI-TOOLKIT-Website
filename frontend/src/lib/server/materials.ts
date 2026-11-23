@@ -5,6 +5,9 @@ import "server-only";
  * Port of backend/app/routers/materials.py; each preset is one of the 2023 lookup tools.
  */
 
+import { fetchWithRetry } from "../fetch-retry";
+import { toXrdStructure } from "../xrd";
+
 export class HttpError extends Error {
   constructor(
     public status: number,
@@ -13,6 +16,9 @@ export class HttpError extends Error {
     super(message);
   }
 }
+
+/** Materials Project API root (overridable so tests can point the routes at a local fake). */
+export const MP_API = process.env.MP_API_URL ?? "https://api.materialsproject.org";
 
 /** Upstream Materials Project requests must fail fast instead of hanging a serverless function. */
 export const UPSTREAM_TIMEOUT_MS = 15_000;
@@ -177,7 +183,7 @@ export function apiKey(): string {
 async function mpSummary(params: URLSearchParams): Promise<{ data: Doc[]; total: number }> {
   let res: Response;
   try {
-    res = await fetch(`https://api.materialsproject.org/materials/summary/?${params}`, {
+    res = await fetchWithRetry(`${MP_API}/materials/summary/?${params}`, {
       headers: { "x-api-key": apiKey() },
       cache: "no-store",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -238,7 +244,7 @@ export async function searchElectrodes(q: URLSearchParams) {
 
   let res: Response;
   try {
-    res = await fetch(`https://api.materialsproject.org/materials/insertion_electrodes/?${params}`, {
+    res = await fetchWithRetry(`${MP_API}/materials/insertion_electrodes/?${params}`, {
       headers: { "x-api-key": apiKey() },
       cache: "no-store",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -268,8 +274,8 @@ export async function getOxidation(id: string) {
   if (!MATERIAL_ID.test(id)) throw new HttpError(422, "Material ids look like 'mp-149'.");
   let res: Response;
   try {
-    res = await fetch(
-      `https://api.materialsproject.org/materials/oxidation_states/?material_ids=${encodeURIComponent(id)}&_fields=possible_species,possible_valences,average_oxidation_states,method,structure`,
+    res = await fetchWithRetry(
+      `${MP_API}/materials/oxidation_states/?material_ids=${encodeURIComponent(id)}&_fields=possible_species,possible_valences,average_oxidation_states,method,structure`,
       { headers: { "x-api-key": apiKey() }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
     );
   } catch (e) {
@@ -365,6 +371,40 @@ export async function phaseEntries(raw: string | null) {
     }];
   });
   return { elements: els, total, entries };
+}
+
+/**
+ * Candidate phases for matching a measured XRD pattern: near-stable, small-cell entries whose elements are
+ * all within the given set (the subsystems of A–B–C…), lowest energy above hull first. Structures are
+ * trimmed to what the XRD simulation needs.
+ */
+export async function xrdCandidates(raw: string | null, limitRaw: string | null) {
+  const els = [...new Set(splitElements(raw))];
+  if (els.length < 1 || els.length > 4) throw new HttpError(422, "Give one to four elements that may be in the sample, e.g. Fe O or Ti Al V.");
+  const limit = Math.min(80, Math.max(5, Number(limitRaw ?? 60) || 60));
+  const { data, total } = await mpSummary(
+    new URLSearchParams({
+      chemsys: subsystems(els).join(","),
+      _fields: "material_id,formula_pretty,structure,energy_above_hull,is_stable,symmetry,nsites",
+      energy_above_hull_max: "0.1",
+      nsites_max: "60",
+      _sort_fields: "energy_above_hull",
+      _limit: String(limit),
+    }),
+  );
+  const candidates = data.flatMap((d) => {
+    const structure = toXrdStructure(d.structure);
+    if (!structure) return [];
+    return [{
+      material_id: d.material_id as string,
+      formula: d.formula_pretty as string,
+      spacegroup: ((d.symmetry as Doc | undefined)?.symbol as string | undefined) ?? null,
+      e_above_hull: (d.energy_above_hull as number | null) ?? null,
+      is_stable: Boolean(d.is_stable),
+      structure,
+    }];
+  });
+  return { elements: els, total, candidates };
 }
 
 export async function searchMaterials(q: URLSearchParams) {

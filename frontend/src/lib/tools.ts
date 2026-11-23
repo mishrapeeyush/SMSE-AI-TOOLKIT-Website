@@ -1,4 +1,4 @@
-import { Atom, BatteryCharging, BookMarked, ChartScatter, Database, FlaskConical, Microscope, ScanSearch, type LucideIcon } from "lucide-react";
+import { Activity, Atom, BatteryCharging, BookMarked, ChartScatter, Database, FlaskConical, Microscope, ScanSearch, type LucideIcon } from "lucide-react";
 
 export type Tool = {
   href: string;
@@ -22,6 +22,13 @@ export const TOOLS: Tool[] = [
     short: "Analysis",
     description: "Measure grain size (ASTM E112) and porosity from optical or SEM micrographs, with scale-bar calibration and size distributions.",
     icon: ScanSearch,
+  },
+  {
+    href: "/xrd-match",
+    name: "XRD Phase Matching",
+    short: "XRD",
+    description: "Upload a measured powder pattern; find the matching Materials Project phases and get crystallite sizes from peak widths (Scherrer).",
+    icon: Activity,
   },
   {
     href: "/steel",

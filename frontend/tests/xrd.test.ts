@@ -51,3 +51,17 @@ for (const c of cases) {
     });
   }
 }
+
+import { toXrdStructure } from "../src/lib/xrd.ts";
+
+test("toXrdStructure keeps only what the simulation needs, and rejects malformed structures", () => {
+  const raw = {
+    "@module": "pymatgen.core.structure",
+    lattice: { matrix: [[3, 0, 0], [0, 3, 0], [0, 0, 3]], a: 3, volume: 27 },
+    sites: [{ species: [{ element: "Fe", occu: 1 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: "Fe", properties: {} }],
+  };
+  assert.deepEqual(toXrdStructure(raw), { lattice: { matrix: raw.lattice.matrix }, sites: [{ abc: [0, 0, 0], species: [{ element: "Fe", occu: 1 }] }] });
+  assert.equal(toXrdStructure(null), null);
+  assert.equal(toXrdStructure({ lattice: { matrix: [[1, 0, 0]] }, sites: [] }), null);
+  assert.equal(toXrdStructure({ lattice: raw.lattice, sites: [{ species: [], abc: [0, 0, 0] }] }), null);
+});

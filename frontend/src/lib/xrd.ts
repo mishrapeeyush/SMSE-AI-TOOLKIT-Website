@@ -165,3 +165,37 @@ export function computeXrd(structure: XrdStructure, wavelength: number, range: [
       multiplicity: p.hkls.length,
     }));
 }
+
+/**
+ * Merge reflections closer than `tol` degrees into one line (DFT cells are often very slightly distorted, so
+ * symmetry-equivalent lines can differ by hundredths of a degree). Intensities add; the label is the strongest.
+ */
+export function mergeNearbyPeaks(peaks: XrdPeak[], tol = 0.05): XrdPeak[] {
+  const merged: XrdPeak[] = [];
+  for (const p of peaks) {
+    const last = merged[merged.length - 1];
+    if (last && p.twoTheta - last.twoTheta < tol) {
+      if (p.intensity > last.intensity) last.hkl = p.hkl;
+      last.intensity += p.intensity;
+      last.multiplicity += p.multiplicity;
+    } else merged.push({ ...p });
+  }
+  return merged;
+}
+
+/**
+ * Keep only what the simulation needs from a Materials Project / pymatgen structure dict (lattice matrix,
+ * species with occupancy, fractional coordinates). Returns null when the structure is malformed.
+ */
+export function toXrdStructure(raw: unknown): XrdStructure | null {
+  const s = raw as { lattice?: { matrix?: unknown }; sites?: unknown } | null;
+  const m = s?.lattice?.matrix;
+  if (!Array.isArray(m) || m.length !== 3 || !m.every((r) => Array.isArray(r) && r.length === 3 && r.every(Number.isFinite))) return null;
+  if (!Array.isArray(s?.sites) || !s.sites.length) return null;
+  const sites: XrdStructure["sites"] = [];
+  for (const site of s.sites as { species?: { element?: string; occu?: number }[]; abc?: number[] }[]) {
+    if (!Array.isArray(site.abc) || site.abc.length !== 3 || !Array.isArray(site.species) || !site.species.length) return null;
+    sites.push({ abc: site.abc.map(Number), species: site.species.map((sp) => ({ element: String(sp.element), occu: sp.occu ?? 1 })) });
+  }
+  return { lattice: { matrix: m as number[][] }, sites };
+}

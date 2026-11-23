@@ -4,7 +4,9 @@ import { gunzipSync } from "node:zlib";
 
 import { cacheLife } from "next/cache";
 
-import { apiKey, HttpError, UPSTREAM_TIMEOUT_MS } from "./materials";
+import { fetchWithRetry } from "../fetch-retry";
+import { apiKey, HttpError, MP_API, UPSTREAM_TIMEOUT_MS } from "./materials";
+import { capture, restoreHttpError, unwrap, type Outcome } from "./outcome";
 
 /**
  * Band structure + density of states from the Materials Project.
@@ -29,7 +31,7 @@ export function legacyTaskId(id: string): string {
 }
 
 async function openData(key: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${S3}/${key}`, { signal: AbortSignal.timeout(Number(process.env.S3_TIMEOUT_MS ?? 25000)) });
+  const res = await fetchWithRetry(`${S3}/${key}`, { signal: AbortSignal.timeout(Number(process.env.S3_TIMEOUT_MS ?? 25000)) });
   if (!res.ok) throw new HttpError(404, "Calculated data file not found in the Materials Project open data.");
   const json = JSON.parse(gunzipSync(Buffer.from(await res.arrayBuffer())).toString("utf8"));
   const doc = Array.isArray(json) ? json[0] : json;
@@ -129,8 +131,8 @@ function bandArray(v: unknown): number[][] {
  */
 async function fermiData(materialId: string) {
   const key = apiKey();
-  const res = await fetch(
-    `https://api.materialsproject.org/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=dos,is_metal`,
+  const res = await fetchWithRetry(
+    `${MP_API}/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=dos,is_metal`,
     { headers: { "x-api-key": key }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
   );
   if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}`);
@@ -180,8 +182,8 @@ async function fermiData(materialId: string) {
 
 async function electronicData(materialId: string) {
   const key = apiKey();
-  const res = await fetch(
-    `https://api.materialsproject.org/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=bandstructure,dos`,
+  const res = await fetchWithRetry(
+    `${MP_API}/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=bandstructure,dos`,
     { headers: { "x-api-key": key }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
   );
   if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}`);
@@ -202,25 +204,6 @@ async function electronicData(materialId: string) {
   return { path: path ?? null, bandstructure: bs, dos };
 }
 
-type Outcome<T> = { ok: T } | { error: { status: number; message: string } };
-
-/** Run `fn`; HttpErrors become plain data so they survive the `use cache` boundary (classes don't). */
-async function capture<T>(fn: () => Promise<T>): Promise<Outcome<T>> {
-  try {
-    return { ok: await fn() };
-  } catch (e) {
-    // Only permanent outcomes ("no data for this material") are returned — and therefore cached.
-    // Transient failures (timeouts, upstream 5xx) throw, so they are never cached.
-    if (e instanceof HttpError && e.status < 500) return { error: { status: e.status, message: e.message } };
-    throw e;
-  }
-}
-
-function unwrap<T>(o: Outcome<T>): T {
-  if ("error" in o) throw new HttpError(o.error.status, o.error.message);
-  return o.ok;
-}
-
 // Successful results are cached for a week; "not available" outcomes too (they don't change
 // between database releases). Transient failures (network) throw and are not cached.
 async function cachedElectronic(materialId: string) {
@@ -239,8 +222,8 @@ async function resolve<T>(load: () => Promise<Outcome<T>>): Promise<T> {
   let outcome: Outcome<T>;
   try {
     outcome = await load();
-  } catch {
-    throw new HttpError(504, "The Materials Project data took too long to download — please try again in a moment.");
+  } catch (e) {
+    throw restoreHttpError(e, "The Materials Project data took too long to download — please try again in a moment.");
   }
   return unwrap(outcome);
 }

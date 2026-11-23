@@ -26,6 +26,7 @@ models and local development; it is not deployed.
 5. **Environment Variables:**
    - `MP_API_KEY` = your Materials Project key
    - `CROSSREF_MAILTO` = your email (optional; Crossref etiquette, faster responses)
+   - Only for testing against fakes: `MP_API_URL`, `DOI_API_URL`, `CROSSREF_API_URL` override the Materials Project, doi.org and Crossref addresses. Leave them unset in production.
 6. **Deploy** → `https://<project>.vercel.app`. Every `git push` to `main` redeploys.
 
 The repository's other contents (the image dataset, `backend/`) are not part of the deployment: Vercel builds only `frontend/`.

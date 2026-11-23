@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button, Card, Input, Label, Notice, Segmented } from "@/components/ui";
 import { apiGet } from "@/lib/api";
@@ -102,6 +102,15 @@ export function MaterialsExplorer() {
     },
     [preset, elements, exclude, stableOnly, ranges],
   );
+
+  // Search as soon as the property sets are known — with the filters from a deep link (e.g. the Periodic
+  // Table's "Find materials containing Fe") or the defaults — so the page never opens empty.
+  const started = useRef(false);
+  useEffect(() => {
+    if (!meta || started.current) return;
+    started.current = true;
+    void run(0);
+  }, [meta, run]);
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
