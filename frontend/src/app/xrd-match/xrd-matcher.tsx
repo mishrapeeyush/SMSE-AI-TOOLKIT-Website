@@ -2,12 +2,12 @@
 
 import { FileUp } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 
 import { Badge, Button, Card, CardTitle, Input, Label, Notice } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { mergeNearbyPeaks, WAVELENGTHS, type Radiation, type XrdPeak, type XrdStructure } from "@/lib/xrd";
-import { findPeaks, identifyPhases, parseXrdFile, scherrerSize, type Candidate, type ExpPeak, type Match, type Pattern } from "@/lib/xrd-match";
+import { findPeaks, identifyPhases, parseElements, parseXrdFile, patternWarnings, scherrerSize, type Candidate, type ExpPeak, type Match, type Pattern } from "@/lib/xrd-match";
 import type { XrdBatchRequest, XrdResponse } from "@/lib/xrd.worker";
 
 type CandidateMeta = { material_id: string; formula: string; spacegroup: string | null; e_above_hull: number | null; is_stable: boolean; structure: XrdStructure };
@@ -60,10 +60,15 @@ export function XrdMatcher() {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [showWeak, setShowWeak] = useState(false);
+  const [sensitive, setSensitive] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const run = useRef(0);
+  const inflight = useRef(false); // state is stale inside a fast second click; a ref is not
   const input = useRef<HTMLInputElement>(null);
 
-  const peaks: ExpPeak[] = useMemo(() => (file ? findPeaks(file.pattern.twoTheta, file.pattern.intensity) : []), [file]);
+  const peaks: ExpPeak[] = useMemo(() => (file ? findPeaks(file.pattern.twoTheta, file.pattern.intensity, { minRelative: sensitive ? 0.01 : 0.03 }) : []), [file, sensitive]);
+  const warnings = useMemo(() => (file ? patternWarnings(file.pattern) : []), [file]);
+  const step = file ? (file.pattern.twoTheta[file.pattern.twoTheta.length - 1] - file.pattern.twoTheta[0]) / Math.max(1, file.pattern.twoTheta.length - 1) : 0;
   const range = useMemo<[number, number] | null>(() => (file ? [file.pattern.twoTheta[0], file.pattern.twoTheta[file.pattern.twoTheta.length - 1]] : null), [file]);
 
   const load = (name: string, text: string, suggestElements?: string) => {
@@ -81,7 +86,24 @@ export function XrdMatcher() {
 
   const onFile = async (f: File) => {
     if (f.size > 20_000_000) return setError("That file is larger than 20 MB — is it a text pattern (2θ, intensity)?");
-    load(f.name, await f.text());
+    try {
+      load(f.name, await f.text());
+    } catch {
+      setError("That file could not be read.");
+    }
+  };
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) void onFile(f);
+  };
+
+  // Results belong to the inputs they were computed from: changing any of them makes them stale.
+  const changed = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setOutcome(null);
   };
 
   const loadDemo = async () => {
@@ -89,15 +111,19 @@ export function XrdMatcher() {
     load("xrd-demo-Fe-Si.xy (synthetic)", await res.text(), "Fe Si");
   };
 
-  const identify = async () => {
-    if (!file || !range) return;
+  const identify = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!file || !range || inflight.current) return;
+    inflight.current = true;
     const id = ++run.current;
     setError(null);
     setOutcome(null);
     try {
-      if (peaks.length < 3) throw new Error("Fewer than three peaks were found in this pattern — check that the columns are 2θ (degrees) and intensity.");
+      const parsed = parseElements(elements);
+      if (parsed.error) throw new Error(parsed.error);
+      if (peaks.length < 3) throw new Error("Fewer than three peaks were found in this pattern — check that the columns are 2θ (degrees) and intensity, or switch peak sensitivity to High.");
       setBusy("Fetching candidate phases from the Materials Project…");
-      const res = await apiGet<CandidatesResponse>("/xrd/candidates", { elements: elements.trim().replace(/[,\s]+/g, ",") });
+      const res = await apiGet<CandidatesResponse>("/xrd/candidates", { elements: parsed.elements.join(",") });
       if (id !== run.current) return;
       if (!res.candidates.length) throw new Error(`No near-stable phases were found for ${res.elements.join("–")}.`);
       setBusy(`Simulating ${res.candidates.length} diffraction patterns…`);
@@ -115,6 +141,7 @@ export function XrdMatcher() {
     } catch (e) {
       if (id === run.current) setError((e as Error).message);
     } finally {
+      inflight.current = false;
       if (id === run.current) setBusy(null);
     }
   };
@@ -144,25 +171,43 @@ export function XrdMatcher() {
         .map((p) => ({
           ...p,
           d: lambda / (2 * Math.sin((p.twoTheta / 2) * (Math.PI / 180))),
+          // A line only 1–2 steps wide is limited by the scan's step size, not by the sample.
+          resolved: p.fwhm > 2 * step,
           size: scherrerSize(p.fwhm, p.twoTheta, lambda, { instrumentalFwhm: instr }),
         })),
-    [peaks, lambda, instr],
+    [peaks, lambda, instr, step],
   );
 
   return (
     <div className="space-y-6">
       <Card>
+        <form
+          onSubmit={identify}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          className={dragging ? "rounded-lg outline-2 outline-dashed outline-accent" : undefined}
+        >
         <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
           <div>
             <Label htmlFor="xrd-file" hint="2θ and intensity columns (.xy .dat .csv .xye .txt)">
               Measured pattern
             </Label>
+            <p className="mb-2 text-xs text-muted">…or drop the file anywhere on this card.</p>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="ghost" onClick={() => input.current?.click()}>
+              <Button type="button" variant="ghost" onClick={() => input.current?.click()}>
                 <FileUp className="size-4" aria-hidden /> Open file
               </Button>
-              <input id="xrd-file" ref={input} type="file" accept=".xy,.xye,.dat,.csv,.txt,.asc,text/*" hidden onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
-              <Button variant="ghost" onClick={loadDemo}>
+              <input id="xrd-file" ref={input} type="file" accept=".xy,.xye,.dat,.csv,.txt,.asc,text/*" hidden onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = ""; // so choosing the same file again still fires onChange
+                  if (f) void onFile(f);
+                }}
+              />
+              <Button type="button" variant="ghost" onClick={loadDemo}>
                 Synthetic example
               </Button>
             </div>
@@ -176,10 +221,10 @@ export function XrdMatcher() {
             <Label htmlFor="xrd-elements" hint="up to 4, e.g. Fe Si">
               Elements possibly present
             </Label>
-            <Input id="xrd-elements" value={elements} onChange={(e) => setElements(e.target.value)} placeholder="Fe O" className="font-mono" />
+            <Input id="xrd-elements" value={elements} onChange={(e) => changed(setElements)(e.target.value)} placeholder="Fe O" className="font-mono" autoComplete="off" spellCheck={false} />
             <div className="mt-3 flex items-center gap-2">
               <Label htmlFor="xrd-source">X-ray source</Label>
-              <select id="xrd-source" value={radiation} onChange={(e) => setRadiation(e.target.value as Radiation)} className="rounded-lg border border-line bg-surface px-2 py-1 text-sm">
+              <select id="xrd-source" value={radiation} onChange={(e) => changed(setRadiation)(e.target.value as Radiation)} className="rounded-lg border border-line bg-surface px-2 py-1 text-sm">
                 {Object.keys(WAVELENGTHS).map((r) => (
                   <option key={r} value={r}>
                     {r.replace("Ka", " Kα")} ({WAVELENGTHS[r as Radiation]} Å)
@@ -187,13 +232,21 @@ export function XrdMatcher() {
                 ))}
               </select>
             </div>
+            <div className="mt-3 flex items-center gap-2">
+              <Label htmlFor="xrd-sens">Peak sensitivity</Label>
+              <select id="xrd-sens" value={sensitive ? "high" : "normal"} onChange={(e) => changed(setSensitive)(e.target.value === "high")} className="rounded-lg border border-line bg-surface px-2 py-1 text-sm">
+                <option value="normal">Normal (lines above 3 %)</option>
+                <option value="high">High (lines above 1 %)</option>
+              </select>
+            </div>
           </div>
           <div className="flex items-end">
-            <Button onClick={identify} loading={busy !== null} disabled={!file || !elements.trim()}>
+            <Button type="submit" loading={busy !== null} disabled={!file || !elements.trim()}>
               Identify phases
             </Button>
           </div>
         </div>
+        </form>
         {busy && (
           <p className="mt-3 text-sm text-muted" role="status">
             {busy}
@@ -202,6 +255,11 @@ export function XrdMatcher() {
       </Card>
 
       {error && <Notice>{error}</Notice>}
+      {warnings.map((w) => (
+        <Notice key={w} tone="warn">
+          {w}
+        </Notice>
+      ))}
       {!file && !error && (
         <p className="text-muted">
           Open a pattern, or try the synthetic Fe + Si example (it needs the Materials Project, like all candidate lookups). Wavelength must match the instrument that measured it.
@@ -347,7 +405,7 @@ export function XrdMatcher() {
             </div>
             <p className="max-w-xl text-xs text-muted">
               Use the width of a standard (e.g. LaB₆ or Si) measured on the same instrument; it is removed in quadrature. With 0 the size is a lower bound. Scherrer (K = 0.9) is
-              meaningful up to roughly 100–200 nm and ignores strain broadening.
+              meaningful up to roughly 100–200 nm and ignores strain broadening. Overlapping lines and the Kα₂ shoulder of laboratory sources widen a line, so sizes from blended peaks are underestimates.
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -368,7 +426,7 @@ export function XrdMatcher() {
                     <td className="py-2 pr-4">{p.d.toFixed(4)}</td>
                     <td className="py-2 pr-4">{p.intensity.toFixed(0)}</td>
                     <td className="py-2 pr-4">{p.fwhm.toFixed(3)}</td>
-                    <td className="py-2 pr-4">{p.size === null ? "narrower than instrument" : p.size > 200 ? `> 200 nm (${p.size.toFixed(0)})` : `${p.size.toFixed(1)} nm`}</td>
+                    <td className="py-2 pr-4">{!p.resolved ? "line too narrow for this step size" : p.size === null ? "narrower than instrument" : p.size > 200 ? `> 200 nm (${p.size.toFixed(0)})` : `${p.size.toFixed(1)} nm`}</td>
                   </tr>
                 ))}
               </tbody>
