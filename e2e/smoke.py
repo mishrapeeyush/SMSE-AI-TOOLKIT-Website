@@ -85,7 +85,7 @@ with sync_playwright() as p:
     page.on("console", lambda m: m.type == "error" and errors.append(f"{page.url}: {m.text[:200]}"))
     page.on("pageerror", lambda e: errors.append(f"{page.url}: {str(e)[:200]}"))
 
-    paths = ["/", "/micrograph", "/image-analysis", "/steel", "/periodic-table", "/citations"]
+    paths = ["/", "/micrograph", "/image-analysis", "/steel", "/xrd-match", "/periodic-table", "/citations"]
     if not args.no_mp:
         paths += ["/materials", "/phase-diagram", "/electrodes"]
     for path in paths:
@@ -112,6 +112,21 @@ with sync_playwright() as p:
         return ", ".join(out)
 
     check("micrograph: in-browser model", micrograph)
+
+    def xrd_match():
+        page.goto(BASE + "/xrd-match")
+        page.get_by_role("button", name="Synthetic example").click()
+        page.wait_for_selector("text=peaks found", timeout=30000)
+        page.get_by_role("button", name="Identify phases").click()
+        page.wait_for_selector("text=Identified phases", timeout=90000)
+        found = [r.locator("td a").first.inner_text().strip() for r in page.locator("table").first.locator("tbody tr").all()]
+        # With the real Materials Project the Fe-Si system also holds Fe3Si, FeSi ... so only require a
+        # sensible shortlist made of the right elements; the exact Fe + Si answer is asserted in the unit tests.
+        assert found, "no phase identified for the Fe + Si example"
+        assert all(set(__import__("re").findall(r"[A-Z][a-z]?", f)) <= {"Fe", "Si"} for f in found), f"unexpected elements in {found}"
+        return f"identified {', '.join(found)}"
+
+    check("xrd match: Fe + Si example", xrd_match, mp=True)
 
     def steel():
         page.goto(BASE + "/steel")

@@ -4,7 +4,7 @@ import { gunzipSync } from "node:zlib";
 
 import { cacheLife } from "next/cache";
 
-import { apiKey, HttpError, UPSTREAM_TIMEOUT_MS } from "./materials";
+import { apiKey, HttpError, MP_API, UPSTREAM_TIMEOUT_MS } from "./materials";
 
 /**
  * Band structure + density of states from the Materials Project.
@@ -130,7 +130,7 @@ function bandArray(v: unknown): number[][] {
 async function fermiData(materialId: string) {
   const key = apiKey();
   const res = await fetch(
-    `https://api.materialsproject.org/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=dos,is_metal`,
+    `${MP_API}/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=dos,is_metal`,
     { headers: { "x-api-key": key }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
   );
   if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}`);
@@ -181,7 +181,7 @@ async function fermiData(materialId: string) {
 async function electronicData(materialId: string) {
   const key = apiKey();
   const res = await fetch(
-    `https://api.materialsproject.org/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=bandstructure,dos`,
+    `${MP_API}/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=bandstructure,dos`,
     { headers: { "x-api-key": key }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
   );
   if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}`);

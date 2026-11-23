@@ -15,6 +15,7 @@ the first commit of this repository.
 | **Material pages** | Full properties, interactive 3D crystal structure, simulated powder XRD (6 X-ray sources), band structure + density of states, isostructural analogues | three.js; XRD computed in the browser (port of pymatgen's XRDCalculator, verified against it); band structures from the Materials Project open data |
 | **Phase Diagram** | Binary convex hulls and ternary phase diagrams with tie-lines | Materials Project formation energies; stable phases from the Materials Project energy-above-hull; ternary tie-lines computed in the browser |
 | **Periodic Table** | Element data, links into the explorer | Static data |
+| **XRD Phase Matching** | Upload a measured powder pattern, name the possible elements, and get the matching phases plus crystallite sizes (Scherrer) | Peak finding + greedy phase identification (lattice-scale and zero-shift tolerant) against patterns simulated in the browser from Materials Project structures |
 | **Citation Generator** | DOI / title / manual entry → IEEE, APA, MLA, Chicago/Turabian, Harvard, Vancouver, BibTeX | Crossref + doi.org metadata, formatted with citation-js (citeproc-js) |
 
 ![Home page](docs/screenshots/home.png)
