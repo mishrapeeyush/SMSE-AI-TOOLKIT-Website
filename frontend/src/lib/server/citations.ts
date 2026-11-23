@@ -1,15 +1,14 @@
 import "server-only";
 
+import { parseDoi } from "../doi";
 import { HttpError } from "./materials";
 
 /** DOI → CSL-JSON (+ BibTeX) and Crossref free-text search. Port of backend/app/routers/citations.py. */
 
-const DOI = /10\.\d{4,9}\/\S+/i;
-
 export function normalizeDoi(raw: string): string {
-  const m = DOI.exec(raw.trim());
-  if (!m) throw new HttpError(422, "That doesn't look like a DOI (expected something like 10.1063/1.4812323).");
-  return m[0].replace(/[.,;]+$/, "");
+  const doi = parseDoi(raw);
+  if (!doi) throw new HttpError(422, "That doesn't look like a DOI (expected something like 10.1063/1.4812323).");
+  return doi;
 }
 
 /** Drop empty values and name entries with no name parts (they render as "edited by ,"). */
@@ -36,7 +35,7 @@ export function cleanCsl(value: unknown): unknown {
 async function negotiate(doi: string, accept: string): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(`https://doi.org/${doi}`, { headers: { Accept: accept }, redirect: "follow", cache: "no-store" });
+    res = await fetch(`https://doi.org/${doi}`, { headers: { Accept: accept }, redirect: "follow", cache: "no-store", signal: AbortSignal.timeout(10_000) });
   } catch (e) {
     throw new HttpError(502, `Could not reach doi.org: ${(e as Error).message}`);
   }
@@ -47,13 +46,20 @@ async function negotiate(doi: string, accept: string): Promise<string> {
 
 export async function resolveDoi(raw: string) {
   const doi = normalizeDoi(raw);
-  const csl = cleanCsl(JSON.parse(await negotiate(doi, "application/vnd.citationstyles.csl+json"))) as Record<string, unknown>;
+  // The CSL-JSON and BibTeX requests are independent: run them together (BibTeX is optional).
+  const [cslText, bibtex] = await Promise.all([
+    negotiate(doi, "application/vnd.citationstyles.csl+json"),
+    negotiate(doi, "application/x-bibtex").catch(() => null),
+  ]);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cslText);
+  } catch {
+    throw new HttpError(502, `doi.org did not return citation metadata for ${doi}. Try entering the reference manually.`);
+  }
+  const csl = cleanCsl(parsed) as Record<string, unknown>;
   for (const k of ["reference", "relation", "license", "link", "funder", "assertion", "content-domain"]) delete csl[k];
   csl.id = doi;
-  let bibtex: string | null = null;
-  try {
-    bibtex = await negotiate(doi, "application/x-bibtex");
-  } catch {}
   return { doi, csl, bibtex };
 }
 
@@ -75,7 +81,7 @@ export async function searchCrossref(q: string, rows = 5) {
   if (process.env.CROSSREF_MAILTO) params.set("mailto", process.env.CROSSREF_MAILTO);
   let res: Response;
   try {
-    res = await fetch(`https://api.crossref.org/works?${params}`, { cache: "no-store" });
+    res = await fetch(`https://api.crossref.org/works?${params}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
   } catch (e) {
     throw new HttpError(502, `Crossref search failed: ${(e as Error).message}`);
   }

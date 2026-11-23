@@ -4,7 +4,7 @@ import { gunzipSync } from "node:zlib";
 
 import { cacheLife } from "next/cache";
 
-import { HttpError } from "./materials";
+import { apiKey, HttpError, UPSTREAM_TIMEOUT_MS } from "./materials";
 
 /**
  * Band structure + density of states from the Materials Project.
@@ -128,12 +128,10 @@ function bandArray(v: unknown): number[][] {
  * the full n×n×n grid is rebuilt with E(−k) = E(k). Energies are sent in meV relative to E_F.
  */
 async function fermiData(materialId: string) {
-
-  const key = process.env.MP_API_KEY;
-  if (!key) throw new HttpError(503, "Materials Project API key is not configured.");
+  const key = apiKey();
   const res = await fetch(
     `https://api.materialsproject.org/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=dos,is_metal`,
-    { headers: { "x-api-key": key } },
+    { headers: { "x-api-key": key }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
   );
   if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}`);
   const doc = ((await res.json()).data ?? [])[0] as { dos?: { task_id?: string; total?: Record<string, { task_id?: string }> }; is_metal?: boolean } | undefined;
@@ -181,12 +179,10 @@ async function fermiData(materialId: string) {
 }
 
 async function electronicData(materialId: string) {
-
-  const key = process.env.MP_API_KEY;
-  if (!key) throw new HttpError(503, "Materials Project API key is not configured.");
+  const key = apiKey();
   const res = await fetch(
     `https://api.materialsproject.org/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=bandstructure,dos`,
-    { headers: { "x-api-key": key } },
+    { headers: { "x-api-key": key }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
   );
   if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}`);
   const doc = ((await res.json()).data ?? [])[0] as
@@ -249,5 +245,13 @@ async function resolve<T>(load: () => Promise<Outcome<T>>): Promise<T> {
   return unwrap(outcome);
 }
 
-export const getElectronic = (materialId: string) => resolve(() => cachedElectronic(materialId));
-export const getFermi = (materialId: string) => resolve(() => cachedFermi(materialId));
+// Configuration errors are checked here, outside the "use cache" functions: an error thrown inside
+// one loses its class, which used to turn "API key not configured" into "took too long".
+export const getElectronic = (materialId: string) => {
+  apiKey();
+  return resolve(() => cachedElectronic(materialId));
+};
+export const getFermi = (materialId: string) => {
+  apiKey();
+  return resolve(() => cachedFermi(materialId));
+};
