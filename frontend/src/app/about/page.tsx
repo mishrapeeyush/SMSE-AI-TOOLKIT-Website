@@ -101,7 +101,12 @@ export default function AboutPage() {
             <p>
               <strong className="font-medium text-fg">Sent to this site’s server:</strong> only lookups — element symbols, a material id, a DOI or a title. The server
               forwards them to the Materials Project, doi.org or Crossref (the Materials Project key stays on the server) and caches the answers. There are no
-              accounts and no advertising or tracking scripts.
+              accounts and no advertising.
+            </p>
+            <p>
+              <strong className="font-medium text-fg">Monitoring:</strong> to keep the site fast and fix faults, Vercel Analytics counts page views and Speed
+              Insights records page-load timings, both without cookies or personal identifiers. If a page crashes, the error text and the page path (never
+              your files, inputs or the query string) are written to the site’s server log.
             </p>
           </div>
         </section>

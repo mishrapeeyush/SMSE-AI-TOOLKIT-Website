@@ -1,5 +1,6 @@
 import "server-only";
 
+import { logEvent } from "./log";
 import { HttpError } from "./materials";
 
 /** CDN cache lifetimes (seconds) for successful GET responses. */
@@ -30,6 +31,7 @@ export async function respond(fn: () => Promise<unknown> | unknown, cache?: Cach
     return Response.json(await fn(), { headers });
   } catch (e) {
     if (e instanceof HttpError) {
+      if (e.status >= 500) logEvent(e.status === 503 ? "warn" : "error", "upstream_error", { status: e.status, message: e.message.slice(0, 200) });
       return Response.json({ detail: e.message }, { status: e.status, headers: { "Cache-Control": "no-store" } });
     }
     throw e;
