@@ -13,6 +13,7 @@ import {
   astmFromIntercept,
   cropRows,
   dataBarTop,
+  flattenBackground,
   otsu,
   smooth,
   toGray,
@@ -68,6 +69,7 @@ export function ImageAnalyzer() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("grains");
   const [cropBar, setCropBar] = useState(true);
+  const [flatten, setFlatten] = useState(true);
   const [dark, setDark] = useState(true);
   const [autoThr, setAutoThr] = useState(true);
   const [thr, setThr] = useState(128);
@@ -110,8 +112,10 @@ export function ImageAnalyzer() {
   // Analysis image: optionally without the SEM data panel.
   const img = useMemo(() => {
     if (!src) return null;
-    return cropBar && src.barTop ? cropRows(src.gray, Math.max(1, src.barTop - 2)) : src.gray;
-  }, [src, cropBar]);
+    const cropped = cropBar && src.barTop ? cropRows(src.gray, Math.max(1, src.barTop - 2)) : src.gray;
+    // Slow brightness gradients would otherwise push one side of the image across the global threshold.
+    return flatten ? flattenBackground(cropped) : cropped;
+  }, [src, cropBar, flatten]);
 
   const otsuValue = useMemo(() => (img ? otsu(smooth(img, smoothing)) : 128), [img, smoothing]);
   const usedThr = autoThr ? otsuValue : thr;
@@ -317,6 +321,14 @@ export function ImageAnalyzer() {
                   <dd className="text-right text-xl font-semibold tabular-nums">{scale ? fmt(astmFromIntercept(len(result.r.meanIntercept) / 1000), 1) : "set scale"}</dd>
                 </dl>
               )}
+              {result.kind === "grains" && result.r.grainCount < 50 && (
+                <div className="mt-3">
+                  <Notice tone="warn">
+                    Only {result.r.grainCount} grains counted. ASTM E112 asks for at least 50 grains per field for a reliable
+                    grain size — use a lower magnification or check the threshold and boundary settings.
+                  </Notice>
+                </div>
+              )}
               {sizes.length > 1 && (
                 <div className="mt-4 h-40">
                   <ResponsiveContainer width="100%" height="100%">
@@ -367,6 +379,10 @@ export function ImageAnalyzer() {
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} className="size-4 accent-accent" />
                   {mode === "grains" ? "Grain boundaries are dark" : "Pores are dark"}
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={flatten} onChange={(e) => setFlatten(e.target.checked)} className="size-4 accent-accent" />
+                  Correct uneven illumination
                 </label>
                 {src.barTop !== null && (
                   <label className="flex items-center gap-2">
