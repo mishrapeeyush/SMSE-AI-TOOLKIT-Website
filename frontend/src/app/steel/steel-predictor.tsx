@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Badge, Card, CardTitle, Input, Label, Notice, Segmented } from "@/components/ui";
+import { parseDecimal } from "@/lib/parse-number";
 import { loadSteelModel, type SteelModel, type TargetKey } from "@/lib/steel-model";
 
 const TEMP = "Temperature (°C)";
@@ -24,9 +25,11 @@ const SHORT: Record<TargetKey, string> = {
 function predictFrom(model: SteelModel, elements: string[], comp: Record<string, string>, temperature: number) {
   const composition: Record<string, number> = {};
   for (const f of elements) {
-    const v = parseFloat(comp[f]);
-    if (comp[f] !== "" && comp[f] !== undefined && Number.isNaN(v)) return { result: null, error: `${f} must be a number.` };
-    composition[f] = Number.isNaN(v) ? 0 : v;
+    const text = comp[f] ?? "";
+    const v = parseDecimal(text);
+    // A blank field means "none of this element" (0); anything else must be a plain number.
+    if (text.trim() !== "" && v === null) return { result: null, error: `${f} must be a number (e.g. 0.16 or 0,16), not "${text.trim()}".` };
+    composition[f] = v ?? 0;
   }
   try {
     return { result: model.predict(composition, temperature), error: null };
