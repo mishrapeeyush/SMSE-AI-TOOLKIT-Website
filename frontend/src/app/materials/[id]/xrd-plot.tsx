@@ -1,10 +1,11 @@
 "use client";
 
 import { Download } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button, Card, CardTitle } from "@/components/ui";
-import { computeXrd, WAVELENGTHS, type Radiation, type XrdStructure } from "@/lib/xrd";
+import { MAX_XRD_COST, WAVELENGTHS, xrdCost, type Radiation, type XrdPeak, type XrdStructure } from "@/lib/xrd";
+import type { XrdRequest, XrdResponse } from "@/lib/xrd.worker";
 
 const W = 820;
 const H = 320;
@@ -40,25 +41,47 @@ export function XrdPlot({ structure, formula }: { structure: XrdStructure; formu
   const [radiation, setRadiation] = useState<Radiation>("CuKa");
   const [max2t, setMax2t] = useState(90);
 
-  const { peaks, error } = useMemo(() => {
-    try {
-      // Merge reflections within 0.05° for display (DFT cells are often very slightly distorted).
-      const raw = computeXrd(structure, WAVELENGTHS[radiation], [5, max2t]);
-      const merged: typeof raw = [];
-      for (const p of raw) {
-        const last = merged[merged.length - 1];
-        if (last && p.twoTheta - last.twoTheta < 0.05) {
-          if (p.intensity > last.intensity) last.hkl = p.hkl;
-          last.intensity += p.intensity;
-          last.multiplicity += p.multiplicity;
-        } else merged.push({ ...p });
-      }
-      const top = Math.max(...merged.map((p) => p.intensity), 1);
-      return { peaks: merged.map((p) => ({ ...p, intensity: (p.intensity / top) * 100 })), error: null };
-    } catch (e) {
-      return { peaks: [], error: (e as Error).message };
+  // The simulation runs in a Web Worker (a 200-atom cell with a short wavelength takes seconds), and a
+  // request that is superseded by a new radiation / range is cancelled by terminating its worker.
+  const [done, setDone] = useState<{ structure: XrdStructure; radiation: Radiation; max2t: number; raw: XrdPeak[]; error: string | null } | null>(null);
+  const tooBig = xrdCost(structure, WAVELENGTHS[radiation], [5, max2t]) > MAX_XRD_COST;
+
+  useEffect(() => {
+    if (tooBig) return;
+    const worker = new Worker(new URL("../../../lib/xrd.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (e: MessageEvent<XrdResponse>) => {
+      setDone({ structure, radiation, max2t, raw: "peaks" in e.data ? e.data.peaks : [], error: "error" in e.data ? e.data.error : null });
+      worker.terminate();
+    };
+    worker.onerror = () => {
+      setDone({ structure, radiation, max2t, raw: [], error: "The XRD calculation failed in this browser." });
+      worker.terminate();
+    };
+    worker.postMessage({ structure, wavelength: WAVELENGTHS[radiation], range: [5, max2t] } satisfies XrdRequest);
+    return () => worker.terminate();
+  }, [structure, radiation, max2t, tooBig]);
+
+  const current = !tooBig && done?.structure === structure && done.radiation === radiation && done.max2t === max2t ? done : null;
+  const calculating = !tooBig && !current;
+  const error = tooBig
+    ? "This unit cell is too large to simulate in the browser with this X-ray source and 2θ range. Try Cu Kα or Mo Kα, or a smaller 2θ maximum."
+    : (current?.error ?? null);
+
+  const peaks = useMemo(() => {
+    if (!current || current.error) return [];
+    // Merge reflections within 0.05° for display (DFT cells are often very slightly distorted).
+    const merged: XrdPeak[] = [];
+    for (const p of current.raw) {
+      const last = merged[merged.length - 1];
+      if (last && p.twoTheta - last.twoTheta < 0.05) {
+        if (p.intensity > last.intensity) last.hkl = p.hkl;
+        last.intensity += p.intensity;
+        last.multiplicity += p.multiplicity;
+      } else merged.push({ ...p });
     }
-  }, [structure, radiation, max2t]);
+    const top = Math.max(...merged.map((p) => p.intensity), 1);
+    return merged.map((p) => ({ ...p, intensity: (p.intensity / top) * 100 }));
+  }, [current]);
 
   const x = (t: number) => M.left + ((t - 5) / (max2t - 5)) * PW;
   const y = (i: number) => M.top + PH - (i / 105) * PH;
@@ -123,7 +146,11 @@ export function XrdPlot({ structure, formula }: { structure: XrdStructure; formu
         Simulated XRD pattern
       </CardTitle>
 
-      {error ? (
+      {calculating ? (
+        <p className="py-10 text-center text-sm text-muted" role="status">
+          Calculating diffraction pattern…
+        </p>
+      ) : error ? (
         <p className="text-sm text-muted">{error}</p>
       ) : (
         <>
