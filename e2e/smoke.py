@@ -148,6 +148,24 @@ with sync_playwright() as p:
 
     check("image analysis: porosity", analysis)
 
+    def analysis_no_transient():
+        # Slider values are deferred for responsiveness; a new image must never be shown with the old threshold
+        # (that once flashed 37 % before settling on the right 30 %). Record every value rendered during a load.
+        page.goto(BASE + "/image-analysis")
+        page.wait_for_selector("button:has-text('SEM porous sponge')")
+        page.evaluate(
+            "window.__v=[];new MutationObserver(()=>{const d=document.querySelector('dl');"
+            "if(d)window.__v.push(d.innerText.split('\\n')[1]||d.innerText.slice(0,20))}).observe(document.body,{subtree:true,childList:true,characterData:true})"
+        )
+        page.click("button:has-text('SEM porous sponge')")
+        page.wait_for_selector("text=Results", timeout=30000)
+        page.wait_for_timeout(1500)
+        seen = page.evaluate("[...new Set(window.__v)]")
+        assert len(seen) == 1, f"results flickered through {seen}"
+        return f"only {seen[0]} was ever shown"
+
+    check("image analysis: no transient values", analysis_no_transient)
+
     def materials():
         page.goto(BASE + "/materials")
         page.fill("#elements", "Ga N")

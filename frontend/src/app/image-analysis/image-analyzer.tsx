@@ -124,14 +124,19 @@ export function ImageAnalyzer() {
   const usedThr = autoThr ? otsuValue : thr;
 
   // The analysis takes ~200 ms at 768 px: let React keep the sliders responsive and run it on deferred values.
-  const params = useDeferredValue({ usedThr, dark, minArea, closeR });
+  // Everything the result depends on travels together in ONE memoised object, so the numbers, the overlay and
+  // the image they were computed from can never be out of step (a new image must not be paired with the old
+  // threshold), and React sees a stable identity instead of a new object on every render.
+  const live = useMemo(() => ({ img, smoothed, mode, thr: usedThr, dark, minArea, closeR }), [img, smoothed, mode, usedThr, dark, minArea, closeR]);
+  const view = useDeferredValue(live);
+  const shown = view.img;
   const result = useMemo(() => {
-    if (!smoothed) return null;
-    const { usedThr: thr, dark, minArea, closeR } = params;
-    return mode === "porosity"
-      ? { kind: "porosity" as const, r: analysePorosity(smoothed, { thr, poresDark: dark, minArea: Math.max(1, Math.round(minArea / 5)), smoothing: 0 }) }
-      : { kind: "grains" as const, r: analyseGrains(smoothed, { thr, boundariesDark: dark, closeRadius: closeR, minArea, smoothing: 0 }) };
-  }, [smoothed, mode, params]);
+    const { smoothed: sm, mode: m, thr, dark: d, minArea: ma, closeR: cr } = view;
+    if (!sm) return null;
+    return m === "porosity"
+      ? { kind: "porosity" as const, r: analysePorosity(sm, { thr, poresDark: d, minArea: Math.max(1, Math.round(ma / 5)), smoothing: 0 }) }
+      : { kind: "grains" as const, r: analyseGrains(sm, { thr, boundariesDark: d, closeRadius: cr, minArea: ma, smoothing: 0 }) };
+  }, [view]);
 
   // µm per *analysis* pixel (analysis image may be downscaled from the original).
   const scale = useMemo(() => {
@@ -143,13 +148,13 @@ export function ImageAnalyzer() {
   // Draw image + overlay.
   useEffect(() => {
     const c = canvas.current;
-    if (!c || !img || !result) return;
-    c.width = img.w;
-    c.height = img.h;
+    if (!c || !shown || !result) return;
+    c.width = shown.w;
+    c.height = shown.h;
     const ctx = c.getContext("2d")!;
-    const out = ctx.createImageData(img.w, img.h);
-    for (let i = 0; i < img.w * img.h; i++) {
-      const v = img.data[i];
+    const out = ctx.createImageData(shown.w, shown.h);
+    for (let i = 0; i < shown.w * shown.h; i++) {
+      const v = shown.data[i];
       out.data.set([v, v, v, 255], i * 4);
     }
     if (result.kind === "porosity") {
@@ -172,7 +177,7 @@ export function ImageAnalyzer() {
             col = [d[0], d[1], d[2]];
             colors.set(l, col);
           }
-          const v = img.data[i];
+          const v = shown.data[i];
           out.data.set([(v + col[0]) / 2, (v + col[1]) / 2, (v + col[2]) / 2, 255], i * 4);
         }
       }
@@ -180,13 +185,13 @@ export function ImageAnalyzer() {
       ctx.strokeStyle = "rgba(255,255,255,0.7)";
       ctx.setLineDash([4, 4]);
       for (let k = 1; k <= 10; k++) {
-        const y = Math.floor((k * img.h) / 11) + 0.5;
-        const x = Math.floor((k * img.w) / 11) + 0.5;
+        const y = Math.floor((k * shown.h) / 11) + 0.5;
+        const x = Math.floor((k * shown.w) / 11) + 0.5;
         ctx.beginPath();
         ctx.moveTo(0, y);
-        ctx.lineTo(img.w, y);
+        ctx.lineTo(shown.w, y);
         ctx.moveTo(x, 0);
-        ctx.lineTo(x, img.h);
+        ctx.lineTo(x, shown.h);
         ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -200,12 +205,12 @@ export function ImageAnalyzer() {
       ctx.stroke();
       measuring.forEach((p) => ctx.fillRect(p.x - 3, p.y - 3, 6, 6));
     }
-  }, [img, result, measuring]);
+  }, [shown, result, measuring]);
 
   const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!measuring || !img) return;
+    if (!measuring || !shown) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const p = { x: ((e.clientX - rect.left) / rect.width) * img.w, y: ((e.clientY - rect.top) / rect.height) * img.h };
+    const p = { x: ((e.clientX - rect.left) / rect.width) * shown.w, y: ((e.clientY - rect.top) / rect.height) * shown.h };
     setMeasuring(measuring.length >= 2 ? [p] : [...measuring, p]);
   };
   // Scale bar measurement uses the *displayed* (full) image, which includes the data panel.
@@ -237,7 +242,7 @@ export function ImageAnalyzer() {
         ? [`pore,area_${unit}2,equivalent_diameter_${unit},touches_border`, ...result.r.pores.map((p, i) => `${i + 1},${area(p.area)},${len(p.diameter)},${p.touchesBorder}`)]
         : [`grain,area_${unit}2,equivalent_diameter_${unit}`, ...result.r.grains.map((g, i) => `${i + 1},${area(g.area)},${len(g.diameter)}`)];
     const url = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" }));
-    Object.assign(document.createElement("a"), { href: url, download: `${src?.name ?? "image"}-${mode}.csv` }).click();
+    Object.assign(document.createElement("a"), { href: url, download: `${src?.name ?? "image"}-${result?.kind ?? mode}.csv` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
@@ -276,19 +281,19 @@ export function ImageAnalyzer() {
       {error && <Notice>{error}</Notice>}
       {!src && <p className="text-muted">Open an optical or SEM micrograph (images are processed in your browser, never uploaded).</p>}
 
-      {src && img && result && (
+      {src && shown && result && (
         <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
           <Card>
-            <CardTitle aside={<Badge>{src.name}</Badge>}>{mode === "grains" ? "Detected grains" : "Detected pores"}</CardTitle>
+            <CardTitle aside={<Badge>{src.name}</Badge>}>{result.kind === "grains" ? "Detected grains" : "Detected pores"}</CardTitle>
             <canvas
               ref={canvas}
               onClick={onCanvasClick}
               className={clsx("w-full rounded-lg border border-line [image-rendering:pixelated]", measuring && "cursor-crosshair")}
               role="img"
-              aria-label={mode === "grains" ? "Micrograph with detected grains coloured and test lines" : "Micrograph with detected pores in red"}
+              aria-label={result.kind === "grains" ? "Micrograph with detected grains coloured and test lines" : "Micrograph with detected pores in red"}
             />
             <p className="mt-2 text-xs text-muted">
-              {mode === "grains"
+              {result.kind === "grains"
                 ? "Each detected grain has its own colour; dashed lines are the intercept test lines. Grains touching the edge count ½ (Jeffries)."
                 : "Detected pores are shown in red."}
               {src.barTop && cropBar && " The microscope data bar was cropped."}
