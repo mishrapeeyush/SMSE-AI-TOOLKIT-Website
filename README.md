@@ -1,8 +1,8 @@
 # SMSE AI Toolkit v2
 
 AI tools for materials science, rebuilt from the 2023 B.Tech thesis
-*“SMSE AI Toolkit: Material Class and Properties Prediction”* (School of Materials
-Science and Engineering, NIT Calicut — Peeyush Mishra, Kaushlendra Kumar, Pawe
+*“SMSE AI Toolkit: Material Class and Properties Prediction”* ([School of Materials
+Science and Engineering](https://nitc.ac.in/department/materials-science-and-engineering), [NIT Calicut](https://nitc.ac.in/) — Peeyush Mishra, Kaushlendra Kumar, Pawe
 Dhananjay Manohar, Sushil Kumar Kumhar; guide Dr. Devendra K. Yadav). The thesis
 is in [docs/](docs/SMSE_AI_Toolkit_Thesis_2023.pdf); the original Django code is
 the first commit of this repository.
@@ -68,8 +68,6 @@ backend/    Python: model training (+ an optional FastAPI version of the API)
 docs/         thesis PDF and screenshots
 ```
 
-Older uploads kept at the repository root for reference — `smse-toolkit-website.zip`
-(the 2023 code) and `Dragon Real Estates.ipynb` — are not part of the build or deployment.
 Deployment (free, Vercel only, no card) is described in [DEPLOY.md](DEPLOY.md).
 
 ## Run it locally (Windows)

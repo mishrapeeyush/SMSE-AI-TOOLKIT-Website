@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { Nav } from "@/components/nav";
+import { INSTITUTE, SCHOOL } from "@/lib/site";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,7 +31,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">{children}</main>
         <footer className="border-t border-line">
           <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-6 text-xs text-muted sm:flex-row sm:justify-between sm:px-6">
-            <span>SMSE AI Toolkit · School of Materials Science and Engineering, NIT Calicut</span>
+            <span>
+              SMSE AI Toolkit ·{" "}
+              <a className="underline hover:text-fg" href={SCHOOL.url} target="_blank" rel="noreferrer">
+                {SCHOOL.name}
+              </a>
+              ,{" "}
+              <a className="underline hover:text-fg" href={INSTITUTE.url} target="_blank" rel="noreferrer">
+                {INSTITUTE.name}
+              </a>
+            </span>
             <span>
               Data: <a className="underline hover:text-fg" href="https://materialsproject.org">Materials Project</a>,{" "}
               <a className="underline hover:text-fg" href="https://doi.org/10.1038/sdata.2018.172">NFFA-EUROPE SEM</a>, NIMS MatNavi
