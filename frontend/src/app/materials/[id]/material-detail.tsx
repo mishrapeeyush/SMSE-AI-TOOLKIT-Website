@@ -10,7 +10,7 @@ import { Badge, Button, Card, CardTitle, Notice } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { downloadMaterialReport } from "@/lib/report";
 
-import { ElectronicPlot } from "./electronic-plot";
+import { ElectronicPlot, loadElectronic } from "./electronic-plot";
 import { FermiSection } from "./fermi-section";
 import { XrdPlot } from "./xrd-plot";
 
@@ -73,6 +73,7 @@ export function MaterialDetail({ id: idPromise }: { id: Promise<string> }) {
 
   useEffect(() => {
     let live = true;
+    loadElectronic(id).catch(() => {}); // start the slow band-structure download now, not after the material renders
     apiGet<Material>(`/materials/${encodeURIComponent(id)}`)
       .then((m) => live && setMat(m))
       .catch((e) => live && setError(e.message));
@@ -190,7 +191,7 @@ export function MaterialDetail({ id: idPromise }: { id: Promise<string> }) {
 
           {mat.structure && <XrdPlot structure={mat.structure} formula={mat.formula_pretty} />}
 
-          <ElectronicPlot id={mat.material_id} />
+          <ElectronicPlot id={id} />
 
           {mat.is_metal === true && <FermiSection id={mat.material_id} />}
 

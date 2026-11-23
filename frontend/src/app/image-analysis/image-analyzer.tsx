@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { Download, ImageUp, Ruler } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Badge, Button, Card, CardTitle, Input, Label, Notice, Segmented } from "@/components/ui";
@@ -117,15 +117,21 @@ export function ImageAnalyzer() {
     return flatten ? flattenBackground(cropped) : cropped;
   }, [src, cropBar, flatten]);
 
-  const otsuValue = useMemo(() => (img ? otsu(smooth(img, smoothing)) : 128), [img, smoothing]);
+  // Smooth once per (image, smoothing); the Otsu readout and the analysis both reuse it. Before, every
+  // slider tick re-smoothed the image twice (~100 ms each at 768 px).
+  const smoothed = useMemo(() => (img ? smooth(img, smoothing) : null), [img, smoothing]);
+  const otsuValue = useMemo(() => (smoothed ? otsu(smoothed) : 128), [smoothed]);
   const usedThr = autoThr ? otsuValue : thr;
 
+  // The analysis takes ~200 ms at 768 px: let React keep the sliders responsive and run it on deferred values.
+  const params = useDeferredValue({ usedThr, dark, minArea, closeR });
   const result = useMemo(() => {
-    if (!img) return null;
+    if (!smoothed) return null;
+    const { usedThr: thr, dark, minArea, closeR } = params;
     return mode === "porosity"
-      ? { kind: "porosity" as const, r: analysePorosity(img, { thr: usedThr, poresDark: dark, minArea: Math.max(1, Math.round(minArea / 5)), smoothing }) }
-      : { kind: "grains" as const, r: analyseGrains(img, { thr: usedThr, boundariesDark: dark, closeRadius: closeR, minArea, smoothing }) };
-  }, [img, mode, usedThr, dark, minArea, smoothing, closeR]);
+      ? { kind: "porosity" as const, r: analysePorosity(smoothed, { thr, poresDark: dark, minArea: Math.max(1, Math.round(minArea / 5)), smoothing: 0 }) }
+      : { kind: "grains" as const, r: analyseGrains(smoothed, { thr, boundariesDark: dark, closeRadius: closeR, minArea, smoothing: 0 }) };
+  }, [smoothed, mode, params]);
 
   // µm per *analysis* pixel (analysis image may be downscaled from the original).
   const scale = useMemo(() => {

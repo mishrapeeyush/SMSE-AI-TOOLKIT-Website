@@ -37,6 +37,23 @@ const BS_W = 560;
 const DOS_W = W - M.left - M.right - BS_W - GAP;
 const PH = H - M.top - M.bottom;
 
+const requests = new Map<string, Promise<Electronic>>();
+
+/**
+ * Band structure + DOS download (the slowest request on the page). It needs only the material id, so the
+ * page starts it together with the material request instead of waiting for the material to render first;
+ * the plot then picks up the same in-flight promise — still exactly one request.
+ */
+export function loadElectronic(id: string): Promise<Electronic> {
+  let req = requests.get(id);
+  if (!req) {
+    req = apiGet<Electronic>(`/materials/${encodeURIComponent(id)}/electronic`);
+    requests.set(id, req);
+    req.catch(() => requests.delete(id)); // failed requests may be retried on the next visit
+  }
+  return req;
+}
+
 export function ElectronicPlot({ id }: { id: string }) {
   const [data, setData] = useState<Electronic | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +61,7 @@ export function ElectronicPlot({ id }: { id: string }) {
 
   useEffect(() => {
     let live = true;
-    apiGet<Electronic>(`/materials/${encodeURIComponent(id)}/electronic`)
+    loadElectronic(id)
       .then((d) => live && setData(d))
       .catch((e) => live && setError(e.message));
     return () => {
